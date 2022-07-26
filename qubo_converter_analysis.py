@@ -24,7 +24,8 @@ def convert_qubo_to_matrice(qubo):
 def analysis(matrice):
     determinant = linalg.det(matrice)
     rank = linalg.matrix_rank(matrice)
-    #connectivity = nx.algebraic_connectivity(matrice) #format überarbeiten
+    matrice = nx.Graph(matrice)
+    connectivity = nx.algebraic_connectivity(matrice) #format überarbeiten
     print(determinant,rank)
 
 def prune_qubo(matrice):

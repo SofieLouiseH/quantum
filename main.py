@@ -5,6 +5,7 @@ from src import qubo_converter_analysis, qubo_generator
 #config = Config(configpath=r"C:\Users\SofieLouise\PycharmProjects\quantum\config.json")
 #connection = config.create_connection()
 
+
 size = 40
 qubo = qubo_generator.rand(size, "BINARY", low=-5, high=5)
 qubo = qubo_converter_analysis.convert_qubo_to_matrice(qubo)
