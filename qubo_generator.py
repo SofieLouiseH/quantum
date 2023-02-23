@@ -88,7 +88,7 @@ def gnm_random_bqm(variables: Union[int, Sequence[Variable]],
         raise ValueError('num_interactions must not be negative')
 
     # upper bound to complete graph
-    num_interactions = min(num_variables*(num_variables-1)//2,
+    num_interactions = min(num_variables * (num_variables - 1) // 2,
                            num_interactions)
 
     if not isinstance(random_state, np.random.RandomState):
@@ -189,7 +189,7 @@ def gnp_random_bqm(n: Union[int, Sequence[Variable]],
     for v in range(n):
         # determine what variables are connected
         exists = random_state.uniform(size=(n - v - 1)) < p
-        neighbors = np.arange(v+1, n)[exists]
+        neighbors = np.arange(v + 1, n)[exists]
 
         neighborhoods.append(neighbors)
         num_interactions += len(neighbors)
@@ -200,8 +200,8 @@ def gnp_random_bqm(n: Union[int, Sequence[Variable]],
 
     q = 0
     for v, neighbors in enumerate(neighborhoods):
-        irow[q:q+len(neighbors)] = v
-        icol[q:q+len(neighbors)] = neighbors
+        irow[q:q + len(neighbors)] = v
+        icol[q:q + len(neighbors)] = neighbors
         q += len(neighbors)
 
     # calculate the biases
@@ -214,7 +214,7 @@ def gnp_random_bqm(n: Union[int, Sequence[Variable]],
     offset, = bias_generator(1)
 
     return BinaryQuadraticModel.from_numpy_vectors(ldata, (irow, icol, qdata),
-                                offset, vartype, variable_order=labels)
+                                                   offset, vartype, variable_order=labels)
 
 
 @graph_argument('graph')
@@ -256,7 +256,7 @@ def uniform(graph: GraphLike, vartype: VartypeLike,
                       stacklevel=2)
 
     if seed is None:
-        seed = np.random.randint(2**32, dtype=np.uint32)
+        seed = np.random.randint(2 ** 32, dtype=np.uint32)
     r = np.random.RandomState(seed)
 
     variables, edges = graph
@@ -269,18 +269,259 @@ def uniform(graph: GraphLike, vartype: VartypeLike,
         irow = icol = tuple()
 
     ldata = r.uniform(low, high, size=len(variables))
+    ldata = [round(num, 3) for num in ldata]
     qdata = r.uniform(low, high, size=len(irow))
-    offset = r.uniform(low, high)
+    qdata = [round(num, 3) for num in qdata]
 
-    return BinaryQuadraticModel.from_numpy_vectors(ldata, (irow, icol, qdata),
-                                  offset, vartype, variable_order=variables)
+    # offset = r.uniform(low, high)
+
+    a = list(zip(range(len(ldata)), range(len(ldata))))
+    b = list(zip(irow, icol))
+    c = list(zip(icol, irow))  # for lover triangle copy
+    qubit = dict(zip(a, ldata))
+    edge = dict(zip(b, qdata))
+    edge_copy = dict(zip(c, qdata))  # for lover triangle copy
+    edge.update(edge_copy)  # for lover triangle copy
+    edges = dict(sorted(edge.items()))  # for lover triangle copy
+    qubit.update(edges)
+    return qubit
+
+@graph_argument('graph')
+def normal(graph: GraphLike, vartype: VartypeLike,
+            low: float = 0, high: float = 1,
+            cls: None = None,
+            seed: Optional[int] = None) -> BinaryQuadraticModel:
+    """Generate a binary quadratic model with random biases and offset.
+
+    Biases and offset are drawn uniformly from a specified distribution range.
+
+    Args:
+        graph:
+            Graph to build the binary quadratic model (BQM) on. Either an
+            integer `n`, interpreted as a complete graph of size `n`, a nodes/edges
+            pair, a list of edges or a NetworkX graph.
+
+        vartype:
+            Variable type for the BQM. Accepted input values:
+
+            * :class:`~dimod.Vartype.SPIN`, ``'SPIN'``, ``{-1, 1}``
+            * :class:`~dimod.Vartype.BINARY`, ``'BINARY'``, ``{0, 1}``
+
+        low: Low end of the range for the random biases.
+
+        high: High end of the range for the random biases.
+
+        cls: Deprecated. Does nothing.
+
+        seed: Random seed.
+
+    Returns:
+        A binary quadratic model.
+
+    """
+    if cls is not None:
+        warnings.warn("cls keyword argument is deprecated after 0.10.13 and will "
+                      "be removed in 0.11. Does nothing.", DeprecationWarning,
+                      stacklevel=2)
+
+    if seed is None:
+        seed = np.random.randint(2 ** 32, dtype=np.uint32)
+    r = np.random.RandomState(seed)
+
+    variables, edges = graph
+
+    index = {v: idx for idx, v in enumerate(variables)}
+
+    if edges:
+        irow, icol = zip(*((index[u], index[v]) for u, v in edges))
+    else:
+        irow = icol = tuple()
+
+    ldata = r.normal(loc=0.0, scale=high, size=len(variables))
+    ldata = [round(num, 3) for num in ldata]
+    print(high, low)
+    qdata = []
+    spareDegree = low
+    for i in range(len(irow)):
+        if r.uniform(0, 1) > spareDegree:
+            qdata.append(r.normal(loc=0.0, scale=high)) #wichtig
+        else:
+            qdata.append(0)
+    qdata = [round(num, 3) for num in qdata]
+
+    # offset = r.uniform(low, high)
+
+    a = list(zip(range(len(ldata)), range(len(ldata))))
+    b = list(zip(irow, icol))
+    c = list(zip(icol, irow))  # for lover triangle copy
+    qubit = dict(zip(a, ldata))
+    edge = dict(zip(b, qdata))
+    edge_copy = dict(zip(c, qdata))  # for lover triangle copy
+    edge.update(edge_copy)  # for lover triangle copy
+    edges = dict(sorted(edge.items()))  # for lover triangle copy
+    qubit.update(edges)
+    return qubit
 
 
 @graph_argument('graph')
-def rand(graph: GraphLike, vartype: VartypeLike,
-            low: int = 0, high: int = 1,
+def uniform_spare40(graph: GraphLike, vartype: VartypeLike,
+            low: float = 0, high: float = 1, #floats
             cls: None = None,
             seed: Optional[int] = None) -> BinaryQuadraticModel:
+    """Generate a binary quadratic model with random biases and offset.
+
+    Biases and offset are drawn uniformly from a specified distribution range.
+
+    Args:
+        graph:
+            Graph to build the binary quadratic model (BQM) on. Either an
+            integer `n`, interpreted as a complete graph of size `n`, a nodes/edges
+            pair, a list of edges or a NetworkX graph.
+
+        vartype:
+            Variable type for the BQM. Accepted input values:
+
+            * :class:`~dimod.Vartype.SPIN`, ``'SPIN'``, ``{-1, 1}``
+            * :class:`~dimod.Vartype.BINARY`, ``'BINARY'``, ``{0, 1}``
+
+        low: Low end of the range for the random biases.
+
+        high: High end of the range for the random biases.
+
+        cls: Deprecated. Does nothing.
+
+        seed: Random seed.
+
+    Returns:
+        A binary quadratic model.
+
+    """
+    if cls is not None:
+        warnings.warn("cls keyword argument is deprecated after 0.10.13 and will "
+                      "be removed in 0.11. Does nothing.", DeprecationWarning,
+                      stacklevel=2)
+
+    if seed is None:
+        seed = np.random.randint(2 ** 32, dtype=np.uint32)
+    r = np.random.RandomState(seed)
+
+    variables, edges = graph
+
+    index = {v: idx for idx, v in enumerate(variables)}
+
+    if edges:
+        irow, icol = zip(*((index[u], index[v]) for u, v in edges))
+    else:
+        irow = icol = tuple()
+
+    ldata = r.uniform(1, 1, size=len(variables)) #low,high statt 1,1
+    ldata = [round(num, 3) for num in ldata]
+    qdata = []
+    spareDegree = 0.4
+    for i in range(len(irow)):
+        if r.uniform(0, 1) > spareDegree:
+            qdata.append(r.uniform(low, high))
+            #qdata.append(1)
+        else:
+            qdata.append(0)
+    qdata = [round(num, 3) for num in qdata]
+
+    # offset = r.uniform(low, high)
+
+    a = list(zip(range(len(ldata)), range(len(ldata))))
+    b = list(zip(irow, icol))
+    c = list(zip(icol, irow))  # for lower triangle copy
+    qubit = dict(zip(a, ldata))
+    edge = dict(zip(b, qdata))
+    edge_copy = dict(zip(c, qdata))  # for lower triangle copy
+    edge.update(edge_copy)  # for lower triangle copy
+    edges = dict(sorted(edge.items()))  # for lower triangle copy
+    qubit.update(edges)
+    return qubit
+
+@graph_argument('graph')
+def rand_spare40(graph: GraphLike, vartype: VartypeLike,
+            low: float = 0, high: float = 1, #floats
+            cls: None = None,
+            seed: Optional[int] = None) -> BinaryQuadraticModel:
+    """Generate a binary quadratic model with random biases and offset.
+
+    Biases and offset are drawn uniformly from a specified distribution range.
+
+    Args:
+        graph:
+            Graph to build the binary quadratic model (BQM) on. Either an
+            integer `n`, interpreted as a complete graph of size `n`, a nodes/edges
+            pair, a list of edges or a NetworkX graph.
+
+        vartype:
+            Variable type for the BQM. Accepted input values:
+
+            * :class:`~dimod.Vartype.SPIN`, ``'SPIN'``, ``{-1, 1}``
+            * :class:`~dimod.Vartype.BINARY`, ``'BINARY'``, ``{0, 1}``
+
+        low: Low end of the range for the random biases.
+
+        high: High end of the range for the random biases.
+
+        cls: Deprecated. Does nothing.
+
+        seed: Random seed.
+
+    Returns:
+        A binary quadratic model.
+
+    """
+    if cls is not None:
+        warnings.warn("cls keyword argument is deprecated after 0.10.13 and will "
+                      "be removed in 0.11. Does nothing.", DeprecationWarning,
+                      stacklevel=2)
+
+    if seed is None:
+        seed = np.random.randint(2 ** 32, dtype=np.uint32)
+    r = np.random.RandomState(seed)
+
+    variables, edges = graph
+
+    index = {v: idx for idx, v in enumerate(variables)}
+
+    if edges:
+        irow, icol = zip(*((index[u], index[v]) for u, v in edges))
+    else:
+        irow = icol = tuple()
+
+
+    # ldata = [round(num, 3) for num in ldata]
+
+
+    ldata = r.randint(low, high + 1, size=len(variables))
+    qdata = []
+    spareDegree = 0.6
+    for i in range(len(irow)):
+        if r.uniform(0, 1) > spareDegree:
+            qdata.append(r.randint(low, high+1))
+        else:
+            qdata.append(0)
+    qdata = [round(num, 3) for num in qdata]
+
+    # offset = r.uniform(low, high)
+
+    a = list(zip(range(len(ldata)), range(len(ldata))))
+    b = list(zip(irow, icol))
+    c = list(zip(icol, irow))  # for lower triangle copy
+    qubit = dict(zip(a, ldata))
+    edge = dict(zip(b, qdata))
+    edge_copy = dict(zip(c, qdata))  # for lower triangle copy
+    edge.update(edge_copy)  # for lower triangle copy
+    edges = dict(sorted(edge.items()))  # for lower triangle copy
+    qubit.update(edges)
+    return qubit
+
+@graph_argument('graph')
+def rand(graph: GraphLike, vartype: VartypeLike,
+         low: int = 0, high: int = 1,
+         cls: None = None,
+         seed: Optional[int] = None) -> BinaryQuadraticModel:
     """Generate a binary quadratic model with random biases and offset.
     CURRENTLY UNIFORM INSTEAD OF INTEGER
     Biases and offset are integer-valued in specified range.
@@ -315,7 +556,7 @@ def rand(graph: GraphLike, vartype: VartypeLike,
                       stacklevel=2)
 
     if seed is None:
-        seed = np.random.randint(2**32, dtype=np.uint32)
+        seed = np.random.randint(2 ** 32, dtype=np.uint32)
     r = np.random.RandomState(seed)
 
     variables, edges = graph
@@ -328,20 +569,20 @@ def rand(graph: GraphLike, vartype: VartypeLike,
         irow = icol = tuple()
 
     # high+1 for inclusive range
-    ldata = r.randint(low, high+1, size=len(variables))
-    #ldata = [round(num, 3) for num in ldata]
-    qdata = r.randint(low, high+1, size=len(irow))
-    #qdata = [round(num, 3) for num in qdata]
+    ldata = r.randint(low, high + 1, size=len(variables))
+    # ldata = [round(num, 3) for num in ldata]
+    qdata = r.randint(low, high + 1, size=len(irow))
+    # qdata = [round(num, 3) for num in qdata]
     # offset = r.randint(low, high+1)
 
     a = list(zip(range(len(ldata)), range(len(ldata))))
     b = list(zip(irow, icol))
-    c = list(zip(icol, irow)) #for lover triangle copy
+    c = list(zip(icol, irow))  # for lover triangle copy
     qubit = dict(zip(a, ldata))
     edge = dict(zip(b, qdata))
-    edge_copy = dict(zip(c, qdata)) #for lover triangle copy
-    edge.update(edge_copy) #for lover triangle copy
-    edges =  dict(sorted(edge.items())) #for lover triangle copy
+    edge_copy = dict(zip(c, qdata))  # for lover triangle copy
+    edge.update(edge_copy)  # for lover triangle copy
+    edges = dict(sorted(edge.items()))  # for lover triangle copy
     qubit.update(edges)
     return qubit
 
@@ -398,7 +639,7 @@ def ran_r(r: int, graph: GraphLike,
         raise ValueError("r should be a positive integer")
 
     if seed is None:
-        seed = np.random.randint(2**32, dtype=np.uint32)
+        seed = np.random.randint(2 ** 32, dtype=np.uint32)
     rnd = np.random.RandomState(seed)
 
     variables, edges = graph
@@ -412,15 +653,15 @@ def ran_r(r: int, graph: GraphLike,
 
     ldata = np.zeros(len(variables))
 
-    rvals = np.empty(2*r)
+    rvals = np.empty(2 * r)
     rvals[0:r] = range(-r, 0)
-    rvals[r:] = range(1, r+1)
+    rvals[r:] = range(1, r + 1)
     qdata = rnd.choice(rvals, size=len(irow))
 
     offset = 0
 
     return BinaryQuadraticModel.from_numpy_vectors(ldata, (irow, icol, qdata), offset, vartype='SPIN',
-                                  variable_order=variables)
+                                                   variable_order=variables)
 
 
 @graph_argument('graph')
@@ -460,7 +701,7 @@ def doped(p: float, graph: GraphLike,
                       stacklevel=2)
 
     if seed is None:
-        seed = np.random.randint(2**32, dtype=np.uint32)
+        seed = np.random.randint(2 ** 32, dtype=np.uint32)
     rnd = np.random.RandomState(seed)
 
     if p > 1 or p < 0:
@@ -481,7 +722,3 @@ def doped(p: float, graph: GraphLike,
         bqm.add_interaction(u, v, J)
 
     return bqm
-
-
-
-
